@@ -5,10 +5,10 @@ import com.example.caffe.api.dao.orderheader.OrderHeader;
 import com.example.caffe.api.dao.orderitem.OrderItem;
 import com.example.caffe.api.dao.user.User;
 import com.example.caffe.api.dto.order.OrderItemDto;
-import com.example.caffe.api.exception.ExceptionBadRequest;
 import com.example.caffe.api.repository.orderheader.OrderHeaderRepo;
 import com.example.caffe.api.repository.product.ProductRepo;
 import com.example.caffe.api.repository.user.UserRepo;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Transactional
 @Service
 public class OrderHeaderServiceImpl implements OrderHeaderService {
@@ -45,43 +46,40 @@ public class OrderHeaderServiceImpl implements OrderHeaderService {
     public void save(OrderDto orderDto) {
 
         String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        User user = userRepo.findByUsername(username);
+        try {
+            User user = userRepo.findByUsername(username);
+            if (checkQuantity(orderDto.getOrderItemDtoList())) {
 
-        if (check(orderDto.getOrderItemDtoList())) {
-
-            OrderHeader orderHeader = OrderHeader.builder()
-                    .user(user)
-                    .table(orderDto.getTable())
-                    .time(LocalDateTime.now())
-                    .paymentStatus(orderDto.getPaymentStatus())
-                    .build();
-            OrderItem orderItem = new OrderItem();
-            orderItem.setOrderHeader(orderHeader);
+                OrderHeader orderHeader = OrderHeader.builder()
+                        .user(user)
+                        .table(orderDto.getTable())
+                        .time(LocalDateTime.now())
+                        .paymentStatus(orderDto.getPaymentStatus())
+                        .build();
+                OrderItem orderItem = new OrderItem();
+                orderItem.setOrderHeader(orderHeader);
 
             //--------------------------------------------------------------------------------------------------------------
             // prvi nacin automatskog popunjavanja child tabele kroz parent - pomocu java.stream
-            List<OrderItem> list = orderDto.getOrderItemDtoList().stream().map(l -> OrderItem.builder()
-                    .quantity(l.getQuantity())
-                    .product(productRepo.findByBarcode(l.getBarcode()))
-                    .orderHeader(orderHeader)
-                    .build()).collect(Collectors.toList());
+                List<OrderItem> list = orderDto.getOrderItemDtoList().stream().map(l -> OrderItem.builder()
+                        .quantity(l.getQuantity())
+                        .product(productRepo.findByBarcode(l.getBarcode()))
+                        .orderHeader(orderHeader)
+                        .build()).collect(Collectors.toList());
 
-            int totalPrice = orderDto.getOrderItemDtoList().stream()
-                    .map(l -> productRepo.findByBarcode(l.getBarcode()).getPrice() * l.getQuantity()).mapToInt(Integer::intValue).sum();
 
-            orderHeader.setOrders(list);
-            orderHeader.setTotalPrice(totalPrice);
-            orderHeaderRepo.save(orderHeader);
+                orderHeader.setOrders(list);
+                orderHeader.setTotalPrice(totalPrice(orderDto));
+                orderHeaderRepo.save(orderHeader);
 
-            for (int i = 0; i < orderDto.getOrderItemDtoList().size(); i++) {
+                updateQuantityInStock(orderDto.getOrderItemDtoList());
 
-                String barcode = orderDto.getOrderItemDtoList().get(i).getBarcode();
-                int quantity = orderDto.getOrderItemDtoList().get(i).getQuantity();
-
-                productRepo.updateQuantityInStock(productRepo.findByBarcode(barcode).getQuantityInStock() - quantity, barcode);
+            } else {
+                log.error("Uneli ste veci broj artikala u Order nego sto je na stanju.");
+                throw new IndexOutOfBoundsException("Uneli ste veci broj artikala u Order nego sto je na stanju.");
             }
-        } else {
-            throw new ExceptionBadRequest("Uneli ste veci broj artikala u Order nego sto je na stanju.");
+        }catch (NoSuchElementException e){
+            log.error("Korisnik sa unetim Username ne postoji");
         }
         //--------------------------------------------------------------------------------------------------------------
         // drugi nacin automatskog popunjavanja child tabele kroz parent - pomocu for petlje
@@ -109,13 +107,31 @@ public class OrderHeaderServiceImpl implements OrderHeaderService {
         orderHeaderRepo.save(orderHeader);*/
     }
 
-    public boolean check(List<OrderItemDto> items) {
+    public Boolean checkQuantity (List<OrderItemDto> items) {
 
+        try {
+            return items.stream().anyMatch(item -> {
+                String barcode = item.getBarcode();
+                int quantity = item.getQuantity();
+                return !(productRepo.findByBarcode(barcode).getQuantityInStock() - quantity < 0);
+            });
+        }catch (Exception e){
+            log.error(e.getMessage());
+        }
+        return null;
+    }
 
-        return items.stream().anyMatch(item -> {
+    public int totalPrice (OrderDto orderDto){
+        int totalPrice = orderDto.getOrderItemDtoList().stream()
+                .map(l -> productRepo.findByBarcode(l.getBarcode()).getPrice() * l.getQuantity()).mapToInt(Integer::intValue).sum();
+        return totalPrice;
+    }
+
+    public void updateQuantityInStock (List<OrderItemDto> items) {
+        items.stream().forEach(item -> {
             String barcode = item.getBarcode();
             int quantity = item.getQuantity();
-            return !(productRepo.findByBarcode(barcode).getQuantityInStock() - quantity < 0);
+            productRepo.updateQuantityInStock(productRepo.findByBarcode(barcode).getQuantityInStock() - quantity, barcode);
         });
     }
 }

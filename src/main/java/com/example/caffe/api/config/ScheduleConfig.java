@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import javax.mail.MessagingException;
 import java.time.LocalDate;
+import java.util.Date;
 import java.util.List;
 
 @Configuration
@@ -35,7 +36,7 @@ public class ScheduleConfig {
     // cron = "sec min hours days months dayperweek" - cron = "0 0 15 * * *" se odnosi na job svakog dana u 15:00h
     // @Scheduled (fixedRate = "${productUrgentJob.delay}") se odnosi na varijablu koja se definise u application properties
     @Async
-    @Scheduled (cron = "30 39 15 * * *")
+    @Scheduled (cron = "00 17 11 * * *")
     public void productUrgentJob () throws InterruptedException {
         List<Product> listOfUrgentProducts = productRepo.findAllProductsWhereQuantityIsLessThanMinimumQuantity();
 
@@ -52,10 +53,19 @@ public class ScheduleConfig {
                     .build();
             productUrgentRepo.save(productUrgent);
         }
+        System.out.println("updateJob");
     }
+
     @Async
-    @Scheduled (cron = "00 40 15 * * *")
-    public void createPDF () {
+    @Scheduled (cron = "00 16 11 * * *")
+    public void deleteUrgentProductsJob (){
+        productUrgentRepo.findAll().stream().filter(products -> products.getDate().isBefore(LocalDate.now().minusDays(6)));
+        System.out.println("deleteJob");
+    }
+
+    @Async
+    @Scheduled (cron = "00 27 11 * * *")
+    public void createPDFJob () {
         createPDF.createPdf();
         System.out.println("PDF");
     }

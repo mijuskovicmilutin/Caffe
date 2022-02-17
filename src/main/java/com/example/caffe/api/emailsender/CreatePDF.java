@@ -12,6 +12,9 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Transactional
@@ -27,7 +30,7 @@ public class CreatePDF {
 
         Document document = new Document();
         try {
-            PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream("Report_" + LocalDate.now().toString() + ".pdf"));
+            PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream("Report_" + LocalDate.now() + ".pdf"));
             document.open();
 
             Font titleFont = FontFactory.getFont(FontFactory.TIMES_ROMAN, 20f);
@@ -54,17 +57,20 @@ public class CreatePDF {
             table.addCell(new Paragraph(Element.ALIGN_CENTER,"Minimum Quantity In Stock", headerFont));
             table.addCell(new Paragraph(Element.ALIGN_CENTER,"Date", headerFont));
 
-            for (int i = 0; i < productUrgentRepo.findAll().size(); i++){
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getProductId().toString(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getName(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getType(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getBarcode(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getPrice().toString(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getQuantityInStock().toString(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getMinimumQuantityInStock().toString(), cellFont));
-                table.addCell(new Paragraph(productUrgentRepo.findAll().get(i).getDate().toString(), cellFont));
+            List<ProductUrgent> dailyListOfUrgentProducts =
+                    productUrgentRepo.findAll().stream().filter(products -> products.getDate().isEqual(LocalDate.now())).collect(Collectors.toList());
+
+            for (int i = 0; i < dailyListOfUrgentProducts.size(); i++){
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getProductId().toString(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getName(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getType(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getBarcode(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getPrice().toString(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getQuantityInStock().toString(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getMinimumQuantityInStock().toString(), cellFont));
+                table.addCell(new Paragraph(dailyListOfUrgentProducts.get(i).getDate().toString(), cellFont));
             }
-            productUrgentRepo.findAll().stream().sorted(Comparator.comparing(ProductUrgent::getQuantityInStock)).map(productUrgent ->
+            dailyListOfUrgentProducts.stream().sorted(Comparator.comparing(ProductUrgent::getQuantityInStock)).map(productUrgent ->
             {table.addCell(productUrgent.getProductId().toString());
                 table.addCell(productUrgent.getName());
                 table.addCell(productUrgent.getType());
